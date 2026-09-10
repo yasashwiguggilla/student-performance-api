@@ -15,7 +15,7 @@ blob_service_client = BlobServiceClient.from_connection_string(
     connection_string
 )
 
-container_client = blob_service_client.get_container_client("student")
+container_client = blob_service_client.get_container_client("students")
 
 blob_client = container_client.get_blob_client("students.json")
 
