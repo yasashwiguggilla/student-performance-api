@@ -1,34 +1,67 @@
 import azure.functions as func
 import json
-
+import os
+from azure.storage.blob import BlobServiceClient
 
 app = func.FunctionApp(
     http_auth_level=func.AuthLevel.ANONYMOUS
 )
 
 
-# In-memory storage
-students = {}
+# Blob Storage connection
+connection_string = os.environ["AzureWebJobsStorage"]
+
+blob_service_client = BlobServiceClient.from_connection_string(
+    connection_string
+)
+
+container_client = blob_service_client.get_container_client("student")
+
+blob_client = container_client.get_blob_client("students.json")
 
 
-# POST - Create a student
+# Read students from Blob
+def read_students():
+    data = blob_client.download_blob().readall()
+    return json.loads(data)
+
+
+# Write students to Blob
+def write_students(students):
+    data = json.dumps(students, indent=2)
+
+    blob_client.upload_blob(
+        data,
+        overwrite=True
+    )
+
+
+# POST - Create student
 @app.route(route="students", methods=["POST"])
 def create_student(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         data = req.get_json()
 
-        student_id = len(students) + 1
+        students = read_students()
+
+        # Generate new ID
+        if students:
+            new_id = max(student["id"] for student in students) + 1
+        else:
+            new_id = 1
 
         student = {
-            "id": student_id,
+            "id": new_id,
             "name": data["name"],
             "age": data["age"],
             "marks": data["marks"],
             "attendance": data["attendance"]
         }
 
-        students[student_id] = student
+        students.append(student)
+
+        write_students(students)
 
         return func.HttpResponse(
             json.dumps({
@@ -53,22 +86,45 @@ def create_student(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="students", methods=["GET"])
 def get_students(req: func.HttpRequest) -> func.HttpResponse:
 
-    return func.HttpResponse(
-        json.dumps({
-            "students": list(students.values())
-        }),
-        status_code=200,
-        mimetype="application/json"
-    )
+    try:
+        students = read_students()
+
+        return func.HttpResponse(
+            json.dumps({
+                "students": students
+            }),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        return func.HttpResponse(
+            json.dumps({
+                "error": str(e)
+            }),
+            status_code=500,
+            mimetype="application/json"
+        )
 
 
 # GET - Get student by ID
 @app.route(route="students/{student_id}", methods=["GET"])
 def get_student(req: func.HttpRequest) -> func.HttpResponse:
 
-    student_id = int(req.route_params.get("student_id"))
+    try:
+        student_id = int(req.route_params.get("student_id"))
 
-    if student_id not in students:
+        students = read_students()
+
+        for student in students:
+            if student["id"] == student_id:
+
+                return func.HttpResponse(
+                    json.dumps(student),
+                    status_code=200,
+                    mimetype="application/json"
+                )
+
         return func.HttpResponse(
             json.dumps({
                 "error": "Student not found"
@@ -77,47 +133,52 @@ def get_student(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json"
         )
 
-    return func.HttpResponse(
-        json.dumps(students[student_id]),
-        status_code=200,
-        mimetype="application/json"
-    )
+    except Exception as e:
+        return func.HttpResponse(
+            json.dumps({
+                "error": str(e)
+            }),
+            status_code=400,
+            mimetype="application/json"
+        )
 
 
 # PUT - Update student
 @app.route(route="students/{student_id}", methods=["PUT"])
 def update_student(req: func.HttpRequest) -> func.HttpResponse:
 
-    student_id = int(req.route_params.get("student_id"))
+    try:
+        student_id = int(req.route_params.get("student_id"))
 
-    if student_id not in students:
+        students = read_students()
+
+        data = req.get_json()
+
+        for student in students:
+
+            if student["id"] == student_id:
+
+                student["name"] = data["name"]
+                student["age"] = data["age"]
+                student["marks"] = data["marks"]
+                student["attendance"] = data["attendance"]
+
+                write_students(students)
+
+                return func.HttpResponse(
+                    json.dumps({
+                        "message": "Student updated successfully",
+                        "student": student
+                    }),
+                    status_code=200,
+                    mimetype="application/json"
+                )
+
         return func.HttpResponse(
             json.dumps({
                 "error": "Student not found"
             }),
             status_code=404,
-            mimetype="application/json"
-        )
-
-    try:
-        data = req.get_json()
-
-        updated_student = {
-            "id": student_id,
-            "name": data["name"],
-            "age": data["age"],
-            "marks": data["marks"],
-            "attendance": data["attendance"]
-        }
-
-        students[student_id] = updated_student
-
-        return func.HttpResponse(
-            json.dumps({
-                "message": "Student updated successfully",
-                "student": updated_student
-            }),
-            status_code=200,
             mimetype="application/json"
         )
 
@@ -135,9 +196,28 @@ def update_student(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="students/{student_id}", methods=["DELETE"])
 def delete_student(req: func.HttpRequest) -> func.HttpResponse:
 
-    student_id = int(req.route_params.get("student_id"))
+    try:
+        student_id = int(req.route_params.get("student_id"))
 
-    if student_id not in students:
+        students = read_students()
+
+        for student in students:
+
+            if student["id"] == student_id:
+
+                students.remove(student)
+
+                write_students(students)
+
+                return func.HttpResponse(
+                    json.dumps({
+                        "message": "Student deleted successfully",
+                        "student": student
+                    }),
+                    status_code=200,
+                    mimetype="application/json"
+                )
+
         return func.HttpResponse(
             json.dumps({
                 "error": "Student not found"
@@ -146,13 +226,11 @@ def delete_student(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json"
         )
 
-    deleted_student = students.pop(student_id)
-
-    return func.HttpResponse(
-        json.dumps({
-            "message": "Student deleted successfully",
-            "student": deleted_student
-        }),
-        status_code=200,
-        mimetype="application/json"
-    )
+    except Exception as e:
+        return func.HttpResponse(
+            json.dumps({
+                "error": str(e)
+            }),
+            status_code=400,
+            mimetype="application/json"
+        )
