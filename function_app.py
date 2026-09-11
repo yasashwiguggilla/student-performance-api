@@ -3,30 +3,37 @@ import json
 import os
 from azure.storage.blob import BlobServiceClient
 
+
 app = func.FunctionApp(
     http_auth_level=func.AuthLevel.ANONYMOUS
 )
 
 
 # Blob Storage connection
-connection_string = os.environ["AzureWebJobsStorage"]
+connection_string = os.environ["STUDENT_STORAGE_CONNECTION_STRING"]
 
 blob_service_client = BlobServiceClient.from_connection_string(
     connection_string
 )
 
-container_client = blob_service_client.get_container_client("students")
+# Container name
+container_client = blob_service_client.get_container_client(
+    "riskmanagementapiservice"
+)
 
-blob_client = container_client.get_blob_client("students.json")
+# Blob path inside the container
+blob_client = container_client.get_blob_client(
+    "students/students.json"
+)
 
 
-# Read students from Blob
+# Read students from Blob Storage
 def read_students():
     data = blob_client.download_blob().readall()
     return json.loads(data)
 
 
-# Write students to Blob
+# Write students to Blob Storage
 def write_students(students):
     data = json.dumps(students, indent=2)
 
@@ -36,7 +43,10 @@ def write_students(students):
     )
 
 
-# POST - Create student
+# --------------------------------------------------
+# POST - Create a student
+# --------------------------------------------------
+
 @app.route(route="students", methods=["POST"])
 def create_student(req: func.HttpRequest) -> func.HttpResponse:
 
@@ -47,7 +57,9 @@ def create_student(req: func.HttpRequest) -> func.HttpResponse:
 
         # Generate new ID
         if students:
-            new_id = max(student["id"] for student in students) + 1
+            new_id = max(
+                student["id"] for student in students
+            ) + 1
         else:
             new_id = 1
 
@@ -61,6 +73,7 @@ def create_student(req: func.HttpRequest) -> func.HttpResponse:
 
         students.append(student)
 
+        # Save updated data to Blob
         write_students(students)
 
         return func.HttpResponse(
@@ -73,6 +86,7 @@ def create_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+
         return func.HttpResponse(
             json.dumps({
                 "error": str(e)
@@ -82,11 +96,15 @@ def create_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+# --------------------------------------------------
 # GET - Get all students
+# --------------------------------------------------
+
 @app.route(route="students", methods=["GET"])
 def get_students(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
+
         students = read_students()
 
         return func.HttpResponse(
@@ -98,6 +116,7 @@ def get_students(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+
         return func.HttpResponse(
             json.dumps({
                 "error": str(e)
@@ -107,16 +126,23 @@ def get_students(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+# --------------------------------------------------
 # GET - Get student by ID
+# --------------------------------------------------
+
 @app.route(route="students/{student_id}", methods=["GET"])
 def get_student(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
-        student_id = int(req.route_params.get("student_id"))
+
+        student_id = int(
+            req.route_params.get("student_id")
+        )
 
         students = read_students()
 
         for student in students:
+
             if student["id"] == student_id:
 
                 return func.HttpResponse(
@@ -134,6 +160,7 @@ def get_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+
         return func.HttpResponse(
             json.dumps({
                 "error": str(e)
@@ -143,12 +170,18 @@ def get_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+# --------------------------------------------------
 # PUT - Update student
+# --------------------------------------------------
+
 @app.route(route="students/{student_id}", methods=["PUT"])
 def update_student(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
-        student_id = int(req.route_params.get("student_id"))
+
+        student_id = int(
+            req.route_params.get("student_id")
+        )
 
         students = read_students()
 
@@ -163,6 +196,7 @@ def update_student(req: func.HttpRequest) -> func.HttpResponse:
                 student["marks"] = data["marks"]
                 student["attendance"] = data["attendance"]
 
+                # Save updated data to Blob
                 write_students(students)
 
                 return func.HttpResponse(
@@ -183,6 +217,7 @@ def update_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+
         return func.HttpResponse(
             json.dumps({
                 "error": str(e)
@@ -192,12 +227,18 @@ def update_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+# --------------------------------------------------
 # DELETE - Delete student
+# --------------------------------------------------
+
 @app.route(route="students/{student_id}", methods=["DELETE"])
 def delete_student(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
-        student_id = int(req.route_params.get("student_id"))
+
+        student_id = int(
+            req.route_params.get("student_id")
+        )
 
         students = read_students()
 
@@ -207,6 +248,7 @@ def delete_student(req: func.HttpRequest) -> func.HttpResponse:
 
                 students.remove(student)
 
+                # Save updated data to Blob
                 write_students(students)
 
                 return func.HttpResponse(
@@ -227,6 +269,7 @@ def delete_student(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+
         return func.HttpResponse(
             json.dumps({
                 "error": str(e)
