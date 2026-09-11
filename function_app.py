@@ -10,7 +10,7 @@ app = func.FunctionApp(
 
 
 # Blob Storage connection
-connection_string = os.environ["STUDENT_STORAGE_CONNECTION_STRING"]
+connection_string = os.environ["AzureWebJobsStorage"]
 
 blob_service_client = BlobServiceClient.from_connection_string(
     connection_string
@@ -18,12 +18,13 @@ blob_service_client = BlobServiceClient.from_connection_string(
 
 # Container name
 container_client = blob_service_client.get_container_client(
-    "riskmanagementapiservice"
+    "students"
 )
 
 # Blob path inside the container
 blob_client = container_client.get_blob_client(
-    "students/students.json"
+        "students.json"
+
 )
 
 
